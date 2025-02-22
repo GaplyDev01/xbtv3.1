@@ -5,7 +5,7 @@ import { useState, useCallback } from 'react';
 import type { FollowUpOption } from '@/components/chat/FollowUpOptions';
 
 interface Message {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   options?: FollowUpOption[];
 }
