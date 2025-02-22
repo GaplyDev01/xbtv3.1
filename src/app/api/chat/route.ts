@@ -201,9 +201,23 @@ export async function POST(request: Request) {
 
     const enhancedPrompt = `${CHARACTER_PROMPT}\n\nOnly use information from these trusted Solana domains: ${SOLANA_DOMAINS.join(', ')}. Focus on providing accurate market data and analysis from these sources.`;
 
+    // Check if first message is the initial assistant message
+    const INITIAL_MESSAGE = 'yo bruh wassup! TradesXBT in the house';
+    let messagesToSend = messages;
+    let enhancedPrompt = `${CHARACTER_PROMPT}`;
+    
+    if (messages.length > 0 && messages[0].role === 'assistant' && messages[0].content.includes(INITIAL_MESSAGE)) {
+      // Include initial message in system prompt
+      enhancedPrompt += `\n\nInitial Greeting: ${messages[0].content}`;
+      messagesToSend = messages.slice(1); // Remove initial message from the sequence
+    }
+
+    // Add domain restrictions
+    enhancedPrompt += `\n\nOnly use information from these trusted Solana domains: ${SOLANA_DOMAINS.join(', ')}. Focus on providing accurate market data and analysis from these sources.`;
+    
     const enhancedMessages = [
       { role: 'system', content: enhancedPrompt },
-      ...messages
+      ...messagesToSend
     ];
 
     console.log('Processing chat request with messages:', JSON.stringify(enhancedMessages));
