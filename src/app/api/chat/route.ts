@@ -225,9 +225,10 @@ export async function POST(request: Request) {
         Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'sonar-pro-2401',
+        model: 'sonar-pro',
         messages: enhancedMessages,
-        stream: true
+        stream: true,
+        max_tokens: 8000 // Maximum output tokens for sonar-pro
       }),
     }).catch(e => {
       const errorMessage = e instanceof Error ? e.message : String(e);
