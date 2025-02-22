@@ -32,33 +32,53 @@ export function useChat(options: ChatOptions = {}) {
       setMessages(prev => [...prev, userMessage]);
 
       // Send request to chat API
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [...messages, userMessage],
-        }),
-      });
+      let response;
+      try {
+        response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messages: [...messages, userMessage],
+          }),
+        });
+      } catch (error) {
+        throw new Error('Failed to connect to chat service. Please check your internet connection.');
+      }
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.error || `Chat service error (${response.status}). Please try again.`
+        );
+      }
+
+      if (!response.body) {
+        throw new Error('No response from chat service. Please try again.');
       }
 
       // Handle streaming response
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
       let responseText = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
 
-        // Decode and process the chunk
-        const chunk = new TextDecoder().decode(value);
-        responseText += chunk;
-        options.onResponse?.(responseText);
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          // Decode and process the chunk
+          const chunk = decoder.decode(value);
+          responseText += chunk;
+          options.onResponse?.(responseText);
+        }
+      } catch (error) {
+        throw new Error('Error reading chat response. Please try again.');
+      }
+
+      if (!responseText.trim()) {
+        throw new Error('Received empty response from chat service. Please try again.');
       }
 
       // Add assistant message to state
@@ -69,21 +89,27 @@ export function useChat(options: ChatOptions = {}) {
       setMessages(prev => [...prev, assistantMessage]);
 
       // Save to chat history
-      await fetch('/api/chat-history', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userMessage: userMessage.content,
-          assistantMessage: assistantMessage.content,
-          tokenCount: responseText.split(' ').length, // Simple token count
-        }),
-      });
+      try {
+        await fetch('/api/chat-history', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userMessage: userMessage.content,
+            assistantMessage: assistantMessage.content,
+            tokenCount: responseText.split(' ').length, // Simple token count
+          }),
+        });
+      } catch (error) {
+        console.error('Failed to save chat history:', error);
+        // Don't throw here - chat history failure shouldn't break the chat experience
+      }
 
       return responseText;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Chat error:', error);
       setError(error);
       options.onError?.(error);
       throw error;

@@ -61,6 +61,7 @@ export async function POST(request: Request) {
   try {
     // Validate request
     if (!process.env.PERPLEXITY_API_KEY) {
+      console.error('Perplexity API key not configured');
       return NextResponse.json(
         { error: 'Perplexity API key not configured' },
         { status: 500 }
@@ -68,10 +69,21 @@ export async function POST(request: Request) {
     }
 
     // Parse and validate the request body
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      console.error('Failed to parse request body:', error);
+      return NextResponse.json(
+        { error: 'Invalid request body' },
+        { status: 400 }
+      );
+    }
+
     const { messages } = body;
 
     if (!messages || !Array.isArray(messages)) {
+      console.error('Invalid messages format:', messages);
       return NextResponse.json(
         { error: 'Invalid messages format' },
         { status: 400 }
@@ -84,22 +96,34 @@ export async function POST(request: Request) {
       ...messages
     ];
 
+    console.log('Processing chat request with messages:', JSON.stringify(enhancedMessages));
+
     // Create stream and process it directly
     const stream = streamText({
       model: perplexity('llama-3.1-sonar-large-32k-online'),
       messages: enhancedMessages,
-      temperature: 0.7, // Add some variability while keeping responses focused
-      maxTokens: 2000, // Limit response length for better focus
+      temperature: 0.7,
+      maxTokens: 2000,
     });
+
+    // Create a TextEncoder instance
+    const encoder = new TextEncoder();
 
     // Create a TransformStream to handle the chunks
     const transformStream = new TransformStream({
-      async transform(chunk, controller) {
-        controller.enqueue(new TextEncoder().encode(chunk));
+      transform(chunk, controller) {
+        try {
+          const encoded = encoder.encode(chunk);
+          controller.enqueue(encoded);
+        } catch (error) {
+          console.error('Error transforming chunk:', error);
+          controller.error(error);
+        }
       },
     });
 
-    return new Response(
+    // Create and return the response
+    const response = new Response(
       stream.pipeThrough(transformStream),
       {
         headers: {
@@ -109,6 +133,8 @@ export async function POST(request: Request) {
         },
       }
     );
+
+    return response;
   } catch (error) {
     console.error('Chat API error:', error);
     return NextResponse.json(
