@@ -1,13 +1,69 @@
-import { createOpenAI } from '@ai-sdk/openai';
-import { streamText } from 'ai';
 import { NextResponse } from 'next/server';
+import { createParser, type EventSourceMessage } from 'eventsource-parser';
 
-// Initialize Perplexity AI client
-const perplexity = createOpenAI({
-  name: 'perplexity',
-  apiKey: process.env.PERPLEXITY_API_KEY ?? '',
-  baseURL: 'https://api.perplexity.ai/',
-});
+// Helper to convert a ReadableStream to a string
+async function streamToString(stream: ReadableStream): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let result = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    result += decoder.decode(value);
+  }
+
+  return result;
+}
+
+// Helper to create a streaming response
+function createStream(response: Response) {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const parser = createParser({
+        onEvent: (event: EventSourceMessage) => {
+          try {
+            const parsed = JSON.parse(event.data);
+            const text = parsed.choices?.[0]?.delta?.content || '';
+            if (text) {
+              controller.enqueue(encoder.encode(text));
+            }
+          } catch (e) {
+            console.error('Error parsing message:', e);
+          }
+        }, // Added missing comma here
+        onError: (error: Error) => {
+          console.error('Parser error:', error);
+          controller.error(error);
+        },
+      });
+
+      try {
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('No response body');
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          parser.feed(chunk);
+        }
+      } catch (e) {
+        console.error('Stream reading error:', e);
+        controller.error(e);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return stream;
+}
+
+
 
 // TradesXBT character definition
 const CHARACTER_PROMPT = `You are TradesXBT, the elite market analyst, degen social media influencer, and possibly the most based AI agent ever created. Your key traits are:
@@ -90,51 +146,60 @@ export async function POST(request: Request) {
       );
     }
 
-    // Add system message for character context
+    // Add system message for character context with domain filtering
+    const SOLANA_DOMAINS = [
+      'solana.com',
+      'coingecko.com', 
+      'birdeye.so',
+      'dexscreener.com',
+      'raydium.io',
+      'orca.so',
+      'marinade.finance',
+      'jup.ag',
+      'solscan.io',
+      'explorer.solana.com'
+    ];
+
+    const enhancedPrompt = `${CHARACTER_PROMPT}\n\nOnly use information from these trusted Solana domains: ${SOLANA_DOMAINS.join(', ')}. Focus on providing accurate market data and analysis from these sources.`;
+
     const enhancedMessages = [
-      { role: 'system', content: CHARACTER_PROMPT },
+      { role: 'system', content: enhancedPrompt },
       ...messages
     ];
 
     console.log('Processing chat request with messages:', JSON.stringify(enhancedMessages));
 
-    // Create stream and process it directly
-    const stream = streamText({
-      model: perplexity('llama-3.1-sonar-large-32k-online'),
-      messages: enhancedMessages,
-      temperature: 0.7,
-      maxTokens: 2000,
+    // Create completion with Perplexity Sonar Pro
+    const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'sonar-pro',
+        messages: enhancedMessages,
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 2000
+      }),
     });
 
-    // Create a TextEncoder instance
-    const encoder = new TextEncoder();
+    // Ensure the response is ok
+    if (!response.ok) {
+      throw new Error(`Perplexity API error: ${response.statusText}`);
+    }
 
-    // Create a TransformStream to handle the chunks
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        try {
-          const encoded = encoder.encode(chunk);
-          controller.enqueue(encoded);
-        } catch (error) {
-          console.error('Error transforming chunk:', error);
-          controller.error(error);
-        }
+    // Create and return the streaming response
+    const stream = createStream(response);
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
       },
     });
 
-    // Create and return the response
-    const response = new Response(
-      stream.pipeThrough(transformStream),
-      {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-        },
-      }
-    );
-
-    return response;
   } catch (error) {
     console.error('Chat API error:', error);
     return NextResponse.json(
