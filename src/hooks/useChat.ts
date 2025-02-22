@@ -122,14 +122,8 @@ export function useChat(options: ChatOptions = {}) {
             }
           }
 
-          try {
-            // Try to parse as JSON in case it's a structured response
-            const jsonChunk = JSON.parse(chunk);
-            responseText += jsonChunk.choices?.[0]?.delta?.content || '';
-          } catch {
-            // If not JSON, treat as raw text
-            responseText += chunk;
-          }
+          // Accumulate response text directly since server sends plain text
+          responseText += chunk;
           
           options.onResponse?.(responseText);
         }
