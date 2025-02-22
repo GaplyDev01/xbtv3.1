@@ -1,4 +1,3 @@
-import { BirdeyeService } from './BirdeyeService';
 import { QuickNodeService } from './QuickNodeService';
 import { CoinGeckoService } from './CoinGeckoService';
 import { solanaAddressSchema, tokenDetailsSchema } from './validators';
@@ -10,7 +9,7 @@ export class TokenServiceError extends Error {
   constructor(
     message: string,
     public code: string,
-    public source?: 'coingecko' | 'birdeye' | 'quicknode'
+    public source?: 'coingecko' | 'quicknode'
   ) {
     super(message);
     this.name = 'TokenServiceError';
@@ -30,11 +29,11 @@ export interface TokenPrice {
   liquidity_usd: number;
   sparkline_7d?: number[];
   imageUrl: string;
-  source: 'coingecko' | 'birdeye' | 'quicknode';
+  source: 'coingecko' | 'quicknode';
   verified: boolean;
   info: {
     imageUrl: string;
-    source: 'coingecko' | 'birdeye' | 'quicknode';
+    source: 'coingecko' | 'quicknode';
     verified: boolean;
   };
 }
@@ -137,40 +136,7 @@ export class TokenService {
     }
   }
 
-  private static async fetchBirdeyeData(address: string): Promise<TokenDetails | null> {
-    try {
-      const response = await BirdeyeService.getTokenInfo(address);
-      if (!response.success || !response.data) return null;
-      
-      const tokenInfo = response.data;
-      return {
-        id: tokenInfo.address,
-        name: tokenInfo.name,
-        symbol: tokenInfo.symbol,
-        image: {
-          large: tokenInfo.logoURI || '',
-          small: tokenInfo.logoURI || '',
-          thumb: tokenInfo.logoURI || ''
-        },
-        market_data: {
-          current_price: { usd: tokenInfo.price },
-          price_change_percentage_24h: tokenInfo.priceChange24h,
-          market_cap: { usd: tokenInfo.marketCap },
-          total_volume: { usd: tokenInfo.volume24h },
-          high_24h: { usd: 0 },
-          low_24h: { usd: 0 }
-        },
-        description: { en: '' }
-      };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new TokenServiceError(
-        `Failed to fetch Birdeye data: ${errorMessage}`,
-        'BIRDEYE_FETCH_ERROR',
-        'birdeye'
-      );
-    }
-  }
+
 
   private static async fetchQuickNodeData(address: string): Promise<TokenDetails | null> {
     try {
@@ -268,15 +234,7 @@ export class TokenService {
         errors.push(error as Error);
       }
 
-      // Try Birdeye as fallback for Solana-specific data
-      try {
-        const birdeyeData = await TokenService.fetchBirdeyeData(address);
-        if (birdeyeData) return birdeyeData;
-      } catch (error) {
-        errors.push(error as Error);
-      }
-
-      // Last resort: QuickNode
+      // Fallback: QuickNode
       try {
         const quickNodeData = await TokenService.fetchQuickNodeData(address);
         if (quickNodeData) return quickNodeData;
@@ -285,7 +243,7 @@ export class TokenService {
       }
 
       // If all sources failed with actual errors (not just missing data)
-      if (errors.length === 3) {
+      if (errors.length === 2) {
         throw new TokenServiceError(
           'All data sources failed',
           'DATA_SOURCES_FAILED',
@@ -519,40 +477,7 @@ export class TokenService {
     }
   }
 
-  private static async getBirdEyeTokens(limit: number = 50): Promise<TokenPrice[]> {
-    try {
-      const response = await BirdeyeService.getTopTokens(limit);
-      if (!response?.data?.tokens) return [];
-      
-      return response.data.tokens.map(token => ({
-        id: token.address,
-        symbol: token.symbol,
-        name: token.name,
-        current_price: token.price,
-        market_cap: token.marketCap,
-        market_cap_rank: 0,
-        price_change_percentage_24h: token.priceChange24h || 0,
-        volume_24h: token.volume24h || 0,
-        liquidity_usd: 0,
-        sparkline_7d: [],
-        imageUrl: token.logoURI || '',
-        source: 'birdeye' as const,
-        verified: false,
-        info: {
-          imageUrl: token.logoURI || '',
-          source: 'birdeye' as const,
-          verified: false
-        }
-      }));
-    } catch (error) {
-      console.error('Error fetching Birdeye tokens:', error);
-      throw new TokenServiceError(
-        'Failed to fetch Birdeye tokens',
-        'BIRDEYE_FETCH_ERROR',
-        'birdeye'
-      );
-    }
-  }
+
 
   static async getTopTokens(limit: number = 50): Promise<TokenPrice[]> {
     let errors: Error[] = [];
@@ -579,19 +504,10 @@ export class TokenService {
       console.error('Error fetching QuickNode tokens:', error);
     }
 
-    // Last resort: Birdeye
-    try {
-      const birdeyeTokens = await this.getBirdEyeTokens(limit);
-      if (birdeyeTokens.length > 0) {
-        return birdeyeTokens;
-      }
-    } catch (error) {
-      errors.push(error as Error);
-      console.error('Error fetching Birdeye tokens:', error);
-    }
+
 
     // If all sources failed, throw a combined error
-    if (errors.length === 3) {
+    if (errors.length === 2) {
       throw new TokenServiceError(
         'All token data sources failed',
         'ALL_SOURCES_FAILED'
@@ -651,22 +567,9 @@ export class TokenService {
       console.error('Error fetching QuickNode chart data:', error);
     }
 
-    // Try Birdeye
-    try {
-      const birdeyeData = await BirdeyeService.getPriceHistory(tokenAddress, startTime, endTime);
-      if (birdeyeData.data?.items?.length > 0) {
-        return {
-          prices: birdeyeData.data.items.map(point => [point.unixTime * 1000, point.value] as [number, number]),
-          market_caps: [],
-          total_volumes: []
-        };
-      }
-    } catch (error) {
-      errors.push(error as Error);
-      console.error('Error fetching Birdeye chart data:', error);
-    }
 
-    if (errors.length === 3) {
+
+    if (errors.length === 2) {
       throw new TokenServiceError(
         'Failed to fetch chart data from all sources',
         'CHART_DATA_UNAVAILABLE'
