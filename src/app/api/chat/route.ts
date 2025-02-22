@@ -35,7 +35,8 @@ function createStream(response: Response) {
               controller.error(new Error(parsed.error.message || 'Unknown API error'));
             }
           } catch (e) {
-            console.error('Error parsing message:', e, '\nRaw data:', event.data);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            console.error('Error parsing message:', errorMessage, '\nRaw data:', event.data);
             // Don't throw here - some messages might not be JSON
           }
         },
@@ -77,13 +78,15 @@ function createStream(response: Response) {
           }
         }
       } catch (e) {
-        console.error('Stream reading error:', e);
-        controller.error(new Error(`Failed to read stream: ${e.message}`));
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.error('Stream reading error:', errorMessage);
+        controller.error(new Error(`Failed to read stream: ${errorMessage}`));
       } finally {
         try {
           controller.close();
         } catch (e) {
-          console.error('Error closing stream controller:', e);
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.error('Error closing stream controller:', errorMessage);
         }
       }
     },
