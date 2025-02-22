@@ -85,26 +85,24 @@ export async function POST(request: Request) {
     ];
 
     // Create stream with proper types
-    const stream = await streamText({
+    const response = await streamText({
       model: perplexity('llama-3.1-sonar-large-32k-online'),
       messages: enhancedMessages,
       temperature: 0.7, // Add some variability while keeping responses focused
       maxTokens: 2000, // Limit response length for better focus
     });
 
-    // Convert stream to ReadableStream for Response
+    // Convert async iterable to ReadableStream
     const readableStream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
         try {
-          const reader = stream.getReader();
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            controller.enqueue(encoder.encode(`${value}`));
+          for await (const chunk of response) {
+            controller.enqueue(encoder.encode(chunk));
           }
           controller.close();
         } catch (error) {
+          console.error('Stream processing error:', error);
           controller.error(error);
         }
       },
