@@ -51,6 +51,7 @@ const NavLink = ({ href, icon, label, className = '', children }: NavLinkProps) 
 const navItems = [
   { href: '/', icon: <FiHome size={20} />, label: 'Home' },
   { href: '/tokens', icon: <FiTrendingUp size={20} />, label: 'Token Analysis' },
+  { href: '/market', icon: <FiBarChart2 size={20} />, label: 'Market Analysis' },
   { href: '/chat', icon: <FiMessageSquare size={20} />, label: 'Chat with AI' },
   { href: '/portfolio', icon: <FiPieChart size={20} />, label: 'Portfolio' },
   { href: '/investment', icon: <FiDollarSign size={20} />, label: 'Investment' },

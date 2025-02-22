@@ -1,0 +1,6 @@
+{
+  "crons": [{
+    "path": "/api/token-prices/update",
+    "schedule": "*/5 * * * *"
+  }]
+}
