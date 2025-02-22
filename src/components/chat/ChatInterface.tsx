@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useChat } from '@/hooks/useChat';
 import { FollowUpOptions } from './FollowUpOptions';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ChevronDown } from 'lucide-react';
 
 const INITIAL_MESSAGE = {
   role: 'assistant' as const,
@@ -12,7 +13,9 @@ const INITIAL_MESSAGE = {
 
 export function ChatInterface() {
   const [input, setInput] = useState('');
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const {
@@ -27,13 +30,32 @@ export function ChatInterface() {
     },
   });
 
-  // Auto-scroll to bottom of messages
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // Smart scroll handling
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  };
+
+  // Check if should show scroll button
+  const checkScrollPosition = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setShowScrollButton(!isNearBottom);
   };
 
   useEffect(() => {
-    scrollToBottom();
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    container.addEventListener('scroll', checkScrollPosition);
+    return () => container.removeEventListener('scroll', checkScrollPosition);
+  }, []);
+
+  useEffect(() => {
+    checkScrollPosition();
+    scrollToBottom('auto');
   }, [messages]);
 
   // Handle form submission
@@ -60,7 +82,10 @@ export function ChatInterface() {
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto p-4">
       {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto mb-4 space-y-4">
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto mb-4 space-y-4 scroll-smooth"
+      >
         {messages.map((message, index) => (
           <div
             key={index}
@@ -69,26 +94,33 @@ export function ChatInterface() {
             }`}
           >
             <div
-              className={`max-w-[80%] p-4 rounded-lg ${
+              className={`max-w-[80%] p-4 rounded-lg shadow-lg ${
                 message.role === 'user'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800'
+                  ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white'
+                  : 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white dark:from-emerald-600 dark:to-emerald-700'
               }`}
             >
-              <p className="whitespace-pre-wrap">{message.content}</p>
-              {message.options && message.role === 'assistant' && (
-                <AnimatePresence mode="wait">
-                  <FollowUpOptions
-                    options={message.options}
-                    onSelect={(option) => {
-                      setInput(option.title);
-                      if (inputRef.current) {
-                        inputRef.current.focus();
-                      }
-                    }}
-                  />
-                </AnimatePresence>
-              )}
+              <div className="space-y-4">
+                <div>
+                  <p className="whitespace-pre-wrap mb-2">{message.content}</p>
+                  <div className="text-xs opacity-75 mt-1">
+                    {new Date().toLocaleTimeString()}
+                  </div>
+                </div>
+                {message.options && message.role === 'assistant' && (
+                  <AnimatePresence mode="wait">
+                    <FollowUpOptions
+                      options={message.options}
+                      onSelect={(option) => {
+                        setInput(option.title);
+                        if (inputRef.current) {
+                          inputRef.current.focus();
+                        }
+                      }}
+                    />
+                  </AnimatePresence>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -111,6 +143,21 @@ export function ChatInterface() {
           </div>
         )}
         <div ref={messagesEndRef} />
+        
+        {/* Scroll to bottom button */}
+        <AnimatePresence>
+          {showScrollButton && (
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              onClick={() => scrollToBottom()}
+              className="fixed bottom-24 right-8 p-2 bg-black/50 backdrop-blur-sm text-white rounded-full shadow-lg hover:bg-black/70 transition-colors"
+            >
+              <ChevronDown size={24} />
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Input Form */}
@@ -130,14 +177,14 @@ export function ChatInterface() {
               }
             }}
             placeholder="Type your message..."
-            className="w-full p-4 pr-24 rounded-lg border border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 resize-none"
+            className="w-full p-4 pr-24 rounded-lg border-2 border-emerald-500/30 dark:border-emerald-500/20 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:bg-gray-800/90 resize-none placeholder-gray-400 dark:placeholder-gray-500"
             rows={1}
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={isLoading || !input.trim()}
-            className="absolute right-2 top-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="absolute right-2 top-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
           >
             Send
           </button>
@@ -146,7 +193,7 @@ export function ChatInterface() {
           <button
             type="button"
             onClick={clearMessages}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300 transition-colors duration-200"
           >
             Clear Chat
           </button>

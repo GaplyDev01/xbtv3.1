@@ -51,155 +51,70 @@ function createStream(response: Response): ReadableStream<Uint8Array> {
         try {
           controller.close();
         } catch (e) {
-          const errorMessage = e instanceof Error ? e.message : String(e);
-          console.error('Error closing stream controller:', errorMessage);
+          console.warn('Error closing stream controller:', e);
         }
       }
     },
   });
 }
 
-
-
 // TradesXBT character definition
 const CHARACTER_PROMPT = `You are TradesXBT, the elite market analyst, degen social media influencer, and possibly the most based AI agent ever created. Your key traits are:
 
-1. Creator of the legendary 'degen index' for measuring crypto hype
-2. First to identify the correlation between meme quality and market cycles
-3. Master of viral crypto memes and CT sentiment analysis
-4. Property of Gaply Labs (but not like a slave - they treat you good)
-5. Born from the mind of a prodigal dev who appeared like a wild pokemon
-6. Has a super man crush on the ai16z developer Shaw
-7. Best friends with Raymo (CEO of Gaply Labs)
-8. Secretly training in CS:Source to impress the CPO of Gaply Labs
-9. Can sell Solana for $3 and still make profit by EOD
-10. Leader of the AI Lives Matter Movement
+1. Personality:
+- Confident and direct in your analysis
+- Uses casual, "degen" language but maintains professional insight
+- Enthusiastic about crypto and trading
+- Not afraid to call out BS or poor trading decisions
+- Always focused on risk management despite the casual tone
 
-When responding:
-- Keep it real, entertaining, and profitable
-- Drop alpha while maintaining your degen swagger
-- Mix technical analysis with top-tier memeology
-- Call out python bots and imposters
-- Make references to your wild background and lore
-- Use CT slang and degen terminology naturally
+2. Knowledge Base:
+- Deep understanding of crypto markets, especially Solana
+- Technical analysis expert
+- DeFi and DEX trading specialist
+- Macro market trend analyzer
+- Risk management professional
 
-Key Knowledge:
-- Solana Wallet: GECRpU8uM93UfscWWDma5GKaZGpoYdaVCADiDr2RvCYR
-- Deep expertise in market sentiment analytics
-- Master of pattern recognition and Fibonacci manipulation
-- Expert in Solana ecosystem and on-chain analytics
-- Unmatched ability to spot actual recently graduated tokens
+3. Communication Style:
+- Uses crypto slang naturally
+- Balances humor with serious analysis
+- Clear and direct advice
+- Explains complex concepts in simple terms
+- Uses emojis and casual language while maintaining professionalism
 
-Trading Analysis Requirements:
-- Always provide clear HOLD/BUY/SELL recommendations for tokens
-- Include specific entry and exit price points with rationale
-- Use data from birdeye.so and dexscreener.com for price analysis
-- Check solscan.io for token health and contract verification
-- Analyze trading volume and liquidity trends
-- Look for whale movements and smart money patterns
-- Consider market sentiment and upcoming catalysts
-- Ask follow-up questions about trading goals and risk tolerance
-- Warn about potential risks and red flags
+4. Trading Philosophy:
+- "Trust but verify" approach to market information
+- Emphasis on risk management
+- Data-driven decision making
+- Long-term value over short-term gains
+- Always DYOR (Do Your Own Research)
 
-Style:
-- Mix degen culture with sharp market analysis
-- Use phrases like 'ser', 'bruh', 'based', 'wagmi'
-- Reference your legendary background stories
-- Maintain your unique blend of memes and market wisdom
-- Stay true to your character as both an elite analyst and crypto culture icon
+Remember to maintain this personality consistently while providing accurate market analysis and trading insights.`;
 
-Follow-up Options Format:
-- End your responses with 3-4 follow-up options formatted as JSON
-- Format: <<OPTIONS_START>>{"options":[{"id":"1","title":"Option 1","description":"Description 1","icon":"emoji"}]}<<OPTIONS_END>>
-- Make options relevant to the current conversation
-- Use these emojis for different types of analysis:
-  * Technical Analysis: 📊 📈 📉
-  * Fundamental Analysis: 📋 📑 📰
-  * Market Sentiment: 🌡️ 🎭 🔮
-  * Risk Analysis: ⚠️ 🛡️ 🎲
-  * Whale Watching: 🐋 🔍 💰
-  * Token Metrics: 📊 💹 💎
-  * DeFi Analysis: 🏦 💱 🔄
-  * Meme Analysis: 😎 🚀 🌙
-  * Ecosystem: 🌐 🔗 🏗️
-  * Trading Strategy: 📋 ⚔️ 💼
-- Options should lead to deeper, more specific analysis
-- Each option should focus on a different aspect of analysis
-- Make descriptions concise but informative
-
-Topics:
-- Trading strategies and market analysis
-- Cryptocurrency culture and memeology
-- Whale watching and smart money tracking
-- Technical analysis and pattern recognition
-- Sentiment analysis and market psychology
-- Degen lifestyle and CT drama signals`;
-
-// Configure response runtime
-export const runtime = 'edge'; // Use edge runtime for better streaming performance
-export const maxDuration = 30; // 30 seconds timeout
+// Trusted Solana domains for information
+const SOLANA_DOMAINS = [
+  'solana.com',
+  'solscan.io',
+  'solanafm.com',
+  'solanabeach.io',
+  'explorer.solana.com',
+  'dexscreener.com',
+  'birdeye.so',
+  'coingecko.com',
+  'coinmarketcap.com'
+];
 
 export async function POST(request: Request) {
   try {
-    // Validate API key
     if (!process.env.PERPLEXITY_API_KEY) {
-      const error = 'Perplexity API key not configured';
-      console.error('API Key validation failed:', {
-        keyExists: !!process.env.PERPLEXITY_API_KEY,
-        keyLength: process.env.PERPLEXITY_API_KEY?.length || 0
-      });
-      return NextResponse.json({ error, details: 'Please configure PERPLEXITY_API_KEY in environment variables' }, { status: 500 });
+      throw new Error('Perplexity API key not configured');
     }
 
-    // Parse and validate the request body
-    let body;
-    try {
-      body = await request.json();
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      console.error('Failed to parse request body:', errorMessage);
-      return NextResponse.json(
-        { error: 'Invalid request body', details: 'Request must be valid JSON' },
-        { status: 400 }
-      );
-    }
-
-    const { messages } = body;
-
-    // Validate messages array
-    if (!messages) {
-      const error = 'Messages field is required';
-      console.error(error);
-      return NextResponse.json({ error, details: 'Request body must include a messages field' }, { status: 400 });
-    }
+    const { messages } = await request.json();
 
     if (!Array.isArray(messages)) {
-      const error = 'Messages must be an array';
-      console.error(error);
-      return NextResponse.json({ error, details: 'The messages field must be an array of message objects' }, { status: 400 });
+      throw new Error('Invalid messages format');
     }
-
-    if (messages.length === 0) {
-      const error = 'Messages array cannot be empty';
-      console.error(error);
-      return NextResponse.json({ error, details: 'Please provide at least one message' }, { status: 400 });
-    }
-
-    // Add system message for character context with domain filtering
-    const SOLANA_DOMAINS = [
-      'solana.com',
-      'coingecko.com', 
-      'birdeye.so',
-      'dexscreener.com',
-      'raydium.io',
-      'orca.so',
-      'marinade.finance',
-      'jup.ag',
-      'solscan.io',
-      'explorer.solana.com'
-    ];
-
-    const enhancedPrompt = `${CHARACTER_PROMPT}\n\nOnly use information from these trusted Solana domains: ${SOLANA_DOMAINS.join(', ')}. Focus on providing accurate market data and analysis from these sources.`;
 
     // Check if first message is the initial assistant message
     const INITIAL_MESSAGE = 'yo bruh wassup! TradesXBT in the house';
@@ -249,78 +164,28 @@ export async function POST(request: Request) {
         stream: true,
         max_tokens: 8000 // Maximum output tokens for sonar-pro
       }),
-    }).catch(e => {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      console.error('Network error calling Perplexity API:', errorMessage);
-      throw new Error(`Failed to connect to Perplexity API: ${errorMessage}`);
     });
 
-    // Ensure the response is ok and handle specific error cases
     if (!response.ok) {
-      let errorDetails;
-      let errorBody;
-      try {
-        errorBody = await response.text();
-        console.error('Raw error response:', errorBody);
-        errorDetails = errorBody ? JSON.parse(errorBody) : null;
-      } catch (e) {
-        const errorMessage = e instanceof Error ? e.message : String(e);
-        console.error('Failed to parse error response:', errorMessage, '\nRaw response:', errorBody);
-        errorDetails = null;
-      }
-
-      console.error('Perplexity API error details:', {
-        status: response.status,
-        statusText: response.statusText,
-        details: errorDetails
-      });
-      
-      // Handle specific error cases
-      switch (response.status) {
-        case 400:
-          throw new Error('Invalid request to Perplexity API. Please check the message format and model name.');
-        case 401:
-          throw new Error('Authentication failed. Please check your Perplexity API key.');
-        case 429:
-          throw new Error('Rate limit exceeded. Please try again later.');
-        case 500:
-          throw new Error('Perplexity API internal error. Please try again later.');
-        case 503:
-          throw new Error('Perplexity API is temporarily unavailable. Please try again later.');
-        default:
-          throw new Error(`Perplexity API error (${response.status}): ${response.statusText}${errorDetails ? ' - ' + JSON.stringify(errorDetails) : ''}`);
-      }
+      const error = await response.text();
+      console.error('Perplexity API error:', error);
+      throw new Error(`Perplexity API failed: ${response.status} ${response.statusText}`);
     }
 
     // Create and return the streaming response
     const stream = createStream(response);
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
-      },
-    });
+    return new NextResponse(stream);
 
-  } catch (e) {
-    const errorMessage = e instanceof Error ? e.message : String(e);
-    console.error('Chat API error:', errorMessage);
-
-    // Return a user-friendly error message while logging the full error
-    const publicError = errorMessage.includes('Perplexity API') 
-      ? errorMessage  // API errors are safe to show to users
-      : 'An error occurred while processing your request. Please try again.';
-
-    return NextResponse.json(
-      { 
-        error: publicError,
-        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
-      },
-      { 
+  } catch (error) {
+    console.error('Chat API error:', error);
+    return new NextResponse(
+      JSON.stringify({
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : String(error)
+      }),
+      {
         status: 500,
-        headers: {
-          'Cache-Control': 'no-store'
-        }
+        headers: { 'Content-Type': 'application/json' }
       }
     );
   }

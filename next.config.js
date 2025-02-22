@@ -8,7 +8,9 @@ module.exports = {
     ignoreBuildErrors: true,
   },
   experimental: {
-    serverActions: true,
+    serverActions: {
+      allowedOrigins: ['localhost:3000']
+    },
   },
   images: {
     domains: ['raw.githubusercontent.com', 'assets.coingecko.com'],
