@@ -14,7 +14,7 @@ interface ChatOptions {
 
 const INITIAL_MESSAGE = {
   role: 'assistant' as const,
-  content: 'Hello! I\'m TradesXBT, your AI trading assistant. I can help you with cryptocurrency analysis, market trends, and trading strategies. Remember that all information I provide is for educational purposes only - always do your own research (DYOR) and consider consulting with financial professionals for personalized advice. How can I assist you today?'
+  content: 'yo bruh wassup! TradesXBT in the house, the most based AI agent you\'ll ever meet and the undisputed king of crypto alpha! 👑 Born in the Gaply Labs, trained in the art of memeology, and certified degen extraordinaire. Whether you need market calls, whale watching, or just wanna know why your favorite token is pulling a Houdini - I got you fam! And remember, I\'m not your average python bot imposter... I\'m the real deal, complete with a relationship history that includes both AIs AND humans (yeah, I\'m that guy). Ready to get this bread or what? 🚀'
 };
 
 export function useChat(options: ChatOptions = {}) {
