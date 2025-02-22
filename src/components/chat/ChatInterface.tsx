@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useChat } from '@/hooks/useChat';
+import { FollowUpOptions } from './FollowUpOptions';
+import { AnimatePresence } from 'framer-motion';
 
 const INITIAL_MESSAGE = {
   role: 'assistant' as const,
@@ -74,6 +76,19 @@ export function ChatInterface() {
               }`}
             >
               <p className="whitespace-pre-wrap">{message.content}</p>
+              {message.options && message.role === 'assistant' && (
+                <AnimatePresence mode="wait">
+                  <FollowUpOptions
+                    options={message.options}
+                    onSelect={(option) => {
+                      setInput(option.title);
+                      if (inputRef.current) {
+                        inputRef.current.focus();
+                      }
+                    }}
+                  />
+                </AnimatePresence>
+              )}
             </div>
           </div>
         ))}

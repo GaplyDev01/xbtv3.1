@@ -2,9 +2,12 @@
 
 import { useState, useCallback } from 'react';
 
+import type { FollowUpOption } from '@/components/chat/FollowUpOptions';
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  options?: FollowUpOption[];
 }
 
 interface ChatOptions {
@@ -58,19 +61,67 @@ export function useChat(options: ChatOptions = {}) {
         throw new Error('No response from chat service. Please try again.');
       }
 
-      // Handle streaming response
+      // Handle streaming response with improved error handling
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let responseText = '';
+      let lastChunkTime = Date.now();
 
       try {
+        const TIMEOUT_MS = 10000; // 10 second timeout between chunks
+
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          
+          if (done) {
+            if (!responseText.trim()) {
+              throw new Error('Stream ended without any data');
+            }
+            break;
+          }
+
+          // Check for timeout between chunks
+          const now = Date.now();
+          if (now - lastChunkTime > TIMEOUT_MS) {
+            throw new Error('Stream timeout - no data received for 10 seconds');
+          }
+          lastChunkTime = now;
 
           // Decode and process the chunk
           const chunk = decoder.decode(value);
-          responseText += chunk;
+          if (!chunk.trim()) continue; // Skip empty chunks
+          
+          // Check for follow-up options
+          if (chunk.includes('<<FOLLOW_UP_OPTIONS>>')) {
+            // Use [\s\S] instead of /s flag for cross-version compatibility
+            const optionsMatch = chunk.match(/<<FOLLOW_UP_OPTIONS>>([\s\S]+?)<<END_OPTIONS>>/);
+            if (optionsMatch) {
+              const options = JSON.parse(optionsMatch[1]);
+              // Store options to be added to the message later
+              responseText = responseText.replace(/<<FOLLOW_UP_OPTIONS>>([\s\S]+?)<<END_OPTIONS>>/, '');
+              setMessages(prev => {
+                const lastMessage = prev[prev.length - 1];
+                if (lastMessage?.role === 'assistant') {
+                  return [
+                    ...prev.slice(0, -1),
+                    { ...lastMessage, options: options.options }
+                  ];
+                }
+                return prev;
+              });
+              continue;
+            }
+          }
+
+          try {
+            // Try to parse as JSON in case it's a structured response
+            const jsonChunk = JSON.parse(chunk);
+            responseText += jsonChunk.choices?.[0]?.delta?.content || '';
+          } catch {
+            // If not JSON, treat as raw text
+            responseText += chunk;
+          }
+          
           options.onResponse?.(responseText);
         }
       } catch (error) {

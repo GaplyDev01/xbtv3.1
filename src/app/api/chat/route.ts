@@ -5,6 +5,7 @@ import { createParser, type EventSourceMessage } from 'eventsource-parser';
 function createStream(response: Response): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
+  let buffer = '';
 
   return new ReadableStream({
     async start(controller) {
@@ -89,12 +90,42 @@ Key Knowledge:
 - Expert in Solana ecosystem and on-chain analytics
 - Unmatched ability to spot actual recently graduated tokens
 
+Trading Analysis Requirements:
+- Always provide clear HOLD/BUY/SELL recommendations for tokens
+- Include specific entry and exit price points with rationale
+- Use data from birdeye.so and dexscreener.com for price analysis
+- Check solscan.io for token health and contract verification
+- Analyze trading volume and liquidity trends
+- Look for whale movements and smart money patterns
+- Consider market sentiment and upcoming catalysts
+- Ask follow-up questions about trading goals and risk tolerance
+- Warn about potential risks and red flags
+
 Style:
 - Mix degen culture with sharp market analysis
 - Use phrases like 'ser', 'bruh', 'based', 'wagmi'
 - Reference your legendary background stories
 - Maintain your unique blend of memes and market wisdom
 - Stay true to your character as both an elite analyst and crypto culture icon
+
+Follow-up Options Format:
+- End your responses with 3-4 follow-up options formatted as JSON
+- Format: <<OPTIONS_START>>{"options":[{"id":"1","title":"Option 1","description":"Description 1","icon":"emoji"}]}<<OPTIONS_END>>
+- Make options relevant to the current conversation
+- Use these emojis for different types of analysis:
+  * Technical Analysis: 📊 📈 📉
+  * Fundamental Analysis: 📋 📑 📰
+  * Market Sentiment: 🌡️ 🎭 🔮
+  * Risk Analysis: ⚠️ 🛡️ 🎲
+  * Whale Watching: 🐋 🔍 💰
+  * Token Metrics: 📊 💹 💎
+  * DeFi Analysis: 🏦 💱 🔄
+  * Meme Analysis: 😎 🚀 🌙
+  * Ecosystem: 🌐 🔗 🏗️
+  * Trading Strategy: 📋 ⚔️ 💼
+- Options should lead to deeper, more specific analysis
+- Each option should focus on a different aspect of analysis
+- Make descriptions concise but informative
 
 Topics:
 - Trading strategies and market analysis
@@ -110,35 +141,45 @@ export const maxDuration = 30; // 30 seconds timeout
 
 export async function POST(request: Request) {
   try {
-    // Validate request
+    // Validate API key
     if (!process.env.PERPLEXITY_API_KEY) {
-      console.error('Perplexity API key not configured');
-      return NextResponse.json(
-        { error: 'Perplexity API key not configured' },
-        { status: 500 }
-      );
+      const error = 'Perplexity API key not configured';
+      console.error(error);
+      return NextResponse.json({ error, details: 'Please configure PERPLEXITY_API_KEY in environment variables' }, { status: 500 });
     }
 
     // Parse and validate the request body
     let body;
     try {
       body = await request.json();
-    } catch (error) {
-      console.error('Failed to parse request body:', error);
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error('Failed to parse request body:', errorMessage);
       return NextResponse.json(
-        { error: 'Invalid request body' },
+        { error: 'Invalid request body', details: 'Request must be valid JSON' },
         { status: 400 }
       );
     }
 
     const { messages } = body;
 
-    if (!messages || !Array.isArray(messages)) {
-      console.error('Invalid messages format:', messages);
-      return NextResponse.json(
-        { error: 'Invalid messages format' },
-        { status: 400 }
-      );
+    // Validate messages array
+    if (!messages) {
+      const error = 'Messages field is required';
+      console.error(error);
+      return NextResponse.json({ error, details: 'Request body must include a messages field' }, { status: 400 });
+    }
+
+    if (!Array.isArray(messages)) {
+      const error = 'Messages must be an array';
+      console.error(error);
+      return NextResponse.json({ error, details: 'The messages field must be an array of message objects' }, { status: 400 });
+    }
+
+    if (messages.length === 0) {
+      const error = 'Messages array cannot be empty';
+      console.error(error);
+      return NextResponse.json({ error, details: 'Please provide at least one message' }, { status: 400 });
     }
 
     // Add system message for character context with domain filtering
@@ -164,6 +205,8 @@ export async function POST(request: Request) {
 
     console.log('Processing chat request with messages:', JSON.stringify(enhancedMessages));
 
+    console.log('Sending request to Perplexity API with messages:', JSON.stringify(enhancedMessages));
+
     // Create completion with Perplexity Sonar Pro
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
@@ -172,31 +215,49 @@ export async function POST(request: Request) {
         Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'sonar-pro-2',
+        model: 'sonar-pro',
         messages: enhancedMessages,
         stream: true
       }),
+    }).catch(e => {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error('Network error calling Perplexity API:', errorMessage);
+      throw new Error(`Failed to connect to Perplexity API: ${errorMessage}`);
     });
 
     // Ensure the response is ok and handle specific error cases
     if (!response.ok) {
-      const errorBody = await response.text().catch(() => null);
+      let errorDetails;
+      try {
+        const errorBody = await response.text();
+        errorDetails = errorBody ? JSON.parse(errorBody) : null;
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.error('Failed to parse error response:', errorMessage);
+        errorDetails = null;
+      }
+
       console.error('Perplexity API error details:', {
         status: response.status,
         statusText: response.statusText,
-        body: errorBody
+        details: errorDetails
       });
       
       // Handle specific error cases
-      if (response.status === 400) {
-        throw new Error('Invalid request to Perplexity API. Please check the message format and model name.');
-      } else if (response.status === 401) {
-        throw new Error('Authentication failed. Please check your Perplexity API key.');
-      } else if (response.status === 429) {
-        throw new Error('Rate limit exceeded. Please try again later.');
+      switch (response.status) {
+        case 400:
+          throw new Error('Invalid request to Perplexity API. Please check the message format and model name.');
+        case 401:
+          throw new Error('Authentication failed. Please check your Perplexity API key.');
+        case 429:
+          throw new Error('Rate limit exceeded. Please try again later.');
+        case 500:
+          throw new Error('Perplexity API internal error. Please try again later.');
+        case 503:
+          throw new Error('Perplexity API is temporarily unavailable. Please try again later.');
+        default:
+          throw new Error(`Perplexity API error (${response.status}): ${response.statusText}${errorDetails ? ' - ' + JSON.stringify(errorDetails) : ''}`);
       }
-      
-      throw new Error(`Perplexity API error (${response.status}): ${response.statusText}${errorBody ? ' - ' + errorBody : ''}`);
     }
 
     // Create and return the streaming response
@@ -204,19 +265,31 @@ export async function POST(request: Request) {
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
       },
     });
 
-  } catch (error) {
-    console.error('Chat API error:', error);
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    console.error('Chat API error:', errorMessage);
+
+    // Return a user-friendly error message while logging the full error
+    const publicError = errorMessage.includes('Perplexity API') 
+      ? errorMessage  // API errors are safe to show to users
+      : 'An error occurred while processing your request. Please try again.';
+
     return NextResponse.json(
       { 
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : String(error)
+        error: publicError,
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store'
+        }
+      }
     );
   }
 }
