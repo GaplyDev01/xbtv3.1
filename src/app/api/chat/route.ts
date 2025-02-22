@@ -27,35 +27,64 @@ function createStream(response: Response) {
         onEvent: (event: EventSourceMessage) => {
           try {
             const parsed = JSON.parse(event.data);
-            const text = parsed.choices?.[0]?.delta?.content || '';
+            const text = parsed.choices?.[0]?.delta?.content;
             if (text) {
               controller.enqueue(encoder.encode(text));
+            } else if (parsed.error) {
+              console.error('API returned error:', parsed.error);
+              controller.error(new Error(parsed.error.message || 'Unknown API error'));
             }
           } catch (e) {
-            console.error('Error parsing message:', e);
+            console.error('Error parsing message:', e, '\nRaw data:', event.data);
+            // Don't throw here - some messages might not be JSON
           }
-        }, // Added missing comma here
+        },
         onError: (error: Error) => {
-          console.error('Parser error:', error);
-          controller.error(error);
+          console.error('SSE Parser error:', error);
+          controller.error(new Error(`Stream parsing failed: ${error.message}`));
         },
       });
 
       try {
         const reader = response.body?.getReader();
-        if (!reader) throw new Error('No response body');
+        if (!reader) {
+          throw new Error('No response body available from Perplexity API');
+        }
 
+        let buffer = '';
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          
+          if (done) {
+            if (buffer) {
+              // Process any remaining data in buffer
+              parser.feed(buffer);
+            }
+            break;
+          }
+
           const chunk = decoder.decode(value);
-          parser.feed(chunk);
+          buffer += chunk;
+
+          // Process complete messages from buffer
+          const messages = buffer.split('\n\n');
+          buffer = messages.pop() || ''; // Keep incomplete message in buffer
+          
+          for (const message of messages) {
+            if (message.trim()) {
+              parser.feed(message + '\n\n');
+            }
+          }
         }
       } catch (e) {
         console.error('Stream reading error:', e);
-        controller.error(e);
+        controller.error(new Error(`Failed to read stream: ${e.message}`));
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch (e) {
+          console.error('Error closing stream controller:', e);
+        }
       }
     },
   });
