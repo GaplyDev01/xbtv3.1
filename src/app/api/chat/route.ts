@@ -1,27 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createParser, type EventSourceMessage } from 'eventsource-parser';
 
-// Helper to convert a ReadableStream to a string
-async function streamToString(stream: ReadableStream): Promise<string> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let result = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    result += decoder.decode(value);
-  }
-
-  return result;
-}
-
-// Helper to create a streaming response
-function createStream(response: Response) {
+// Helper to create a streaming response with proper error handling
+function createStream(response: Response): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
-  const stream = new ReadableStream({
+  return new ReadableStream({
     async start(controller) {
       const parser = createParser({
         onEvent: (event: EventSourceMessage) => {
@@ -52,30 +37,10 @@ function createStream(response: Response) {
           throw new Error('No response body available from Perplexity API');
         }
 
-        let buffer = '';
         while (true) {
           const { done, value } = await reader.read();
-          
-          if (done) {
-            if (buffer) {
-              // Process any remaining data in buffer
-              parser.feed(buffer);
-            }
-            break;
-          }
-
-          const chunk = decoder.decode(value);
-          buffer += chunk;
-
-          // Process complete messages from buffer
-          const messages = buffer.split('\n\n');
-          buffer = messages.pop() || ''; // Keep incomplete message in buffer
-          
-          for (const message of messages) {
-            if (message.trim()) {
-              parser.feed(message + '\n\n');
-            }
-          }
+          if (done) break;
+          parser.feed(decoder.decode(value));
         }
       } catch (e) {
         const errorMessage = e instanceof Error ? e.message : String(e);
@@ -91,8 +56,6 @@ function createStream(response: Response) {
       }
     },
   });
-
-  return stream;
 }
 
 
