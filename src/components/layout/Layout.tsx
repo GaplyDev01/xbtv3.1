@@ -78,7 +78,7 @@ export default function Layout({ children }: LayoutProps) {
           transition={{ delay: 0.2 }}
         >
           <h1 className="text-2xl font-bold bg-gradient-to-r from-[#00ff99] to-[#00ccff] bg-clip-text text-transparent">
-            X Platform
+            Blockswarms
           </h1>
         </motion.div>
         <nav className="space-y-1 relative">

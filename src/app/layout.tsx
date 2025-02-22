@@ -16,7 +16,7 @@ const orbitron = Orbitron({
 });
 
 export const metadata: Metadata = {
-  title: "X Platform - AI Hedge Fund on Solana",
+  title: "Blockswarms - AI Hedge Fund on Solana",
   description: "Next-generation AI-powered hedge fund built on Solana",
 };
 

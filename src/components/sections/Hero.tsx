@@ -87,7 +87,7 @@ export function Hero() {
         {/* Main title with animated gradient */}
         <h1 className="text-5xl md:text-7xl font-bold">
           <span className="inline-block bg-gradient-to-r from-[#00ff99] via-[#00ccff] to-[#ff0066] bg-clip-text text-transparent animate-text-shimmer">
-            X Platform
+            Blockswarms
           </span>
         </h1>
 

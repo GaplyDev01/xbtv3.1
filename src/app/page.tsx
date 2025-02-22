@@ -66,7 +66,7 @@ export default function Home() {
         {/* Footer */}
         <footer className="relative z-10 border-t border-gray-800 mt-12">
           <div className="container mx-auto px-4 py-6 text-center text-gray-400">
-            <p>© 2025 X Platform. All rights reserved.</p>
+            <p>© 2025 Blockswarms. All rights reserved.</p>
           </div>
         </footer>
       </div>
