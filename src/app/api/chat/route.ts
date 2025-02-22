@@ -211,12 +211,17 @@ export async function POST(request: Request) {
     console.log('Sending request to Perplexity API with messages:', JSON.stringify(enhancedMessages));
 
     // Create completion with Perplexity Sonar Pro
-    console.log('Making API request with:', {
+    const requestConfig = {
       url: 'https://api.perplexity.ai/chat/completions',
       model: 'sonar-pro',
       messageCount: enhancedMessages.length,
-      hasApiKey: !!process.env.PERPLEXITY_API_KEY
-    });
+      hasApiKey: !!process.env.PERPLEXITY_API_KEY,
+      apiKeyLength: process.env.PERPLEXITY_API_KEY?.length,
+      firstMessagePreview: enhancedMessages[0]?.content?.substring(0, 100),
+      environment: process.env.NODE_ENV
+    };
+    
+    console.log('Making API request with:', requestConfig);
 
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
@@ -239,12 +244,14 @@ export async function POST(request: Request) {
     // Ensure the response is ok and handle specific error cases
     if (!response.ok) {
       let errorDetails;
+      let errorBody;
       try {
-        const errorBody = await response.text();
+        errorBody = await response.text();
+        console.error('Raw error response:', errorBody);
         errorDetails = errorBody ? JSON.parse(errorBody) : null;
       } catch (e) {
         const errorMessage = e instanceof Error ? e.message : String(e);
-        console.error('Failed to parse error response:', errorMessage);
+        console.error('Failed to parse error response:', errorMessage, '\nRaw response:', errorBody);
         errorDetails = null;
       }
 
