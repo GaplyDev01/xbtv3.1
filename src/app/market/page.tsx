@@ -15,14 +15,29 @@ import { ChatMessage } from '@/types/chat';
 
 // ... [Previous interfaces remain the same]
 
+interface MarketData {
+  price: number;
+  trend: 'up' | 'down';
+  rsi: number;
+  macd: number;
+}
+
+interface TokenResult {
+  id: string;
+  name: string;
+  symbol: string;
+  price: number;
+  price_change_24h: number;
+}
+
 export default function MarketAnalysis() {
   const [message, setMessage] = useState('');
   const [showLeftPanel, setShowLeftPanel] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
+  const [searchResults, setSearchResults] = useState<TokenResult[]>([]);
   const [selectedTokenId, setSelectedTokenId] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
-  const [marketData, setMarketData] = useState({
+  const [marketData, setMarketData] = useState<MarketData>({
     price: 0,
     trend: 'up',
     rsi: 50,
