@@ -43,7 +43,16 @@ export function useChat(options: ChatOptions = {}) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            messages: [...messages, userMessage],
+            messages: [
+              // Only send the most recent messages to keep context but ensure proper alternation
+              ...messages.slice(-4).filter((msg, index, arr) => {
+                // Keep system messages and ensure proper user/assistant alternation
+                if (msg.role === 'system') return true;
+                if (index === 0) return true; // Keep first message
+                return msg.role !== arr[index - 1].role; // Ensure alternation
+              }),
+              userMessage
+            ],
           }),
         });
       } catch (error) {
