@@ -98,7 +98,7 @@ export interface OHLCData {
 /** Service class for managing token-related operations */
 export type MarketChartData = TokenChartData;
 
-class TokenService {
+export class TokenService {
   /** Default image URL pattern for tokens */
   private static readonly DEFAULT_IMAGE_URL = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/assets/{address}/logo.png';
   
