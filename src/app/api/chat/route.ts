@@ -84,16 +84,30 @@ export async function POST(request: Request) {
       ...messages
     ];
 
-    // Create stream
+    // Create stream with proper types
     const stream = streamText({
       model: perplexity('llama-3.1-sonar-large-32k-online'),
       messages: enhancedMessages,
       temperature: 0.7, // Add some variability while keeping responses focused
-      max_tokens: 2000, // Limit response length for better focus
+      maxTokens: 2000, // Limit response length for better focus
+    });
+
+    // Convert stream to ReadableStream for Response
+    const readableStream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of stream) {
+            controller.enqueue(new TextEncoder().encode(chunk));
+          }
+          controller.close();
+        } catch (error) {
+          controller.error(error);
+        }
+      },
     });
 
     // Create and return the response stream
-    return new Response(stream, {
+    return new Response(readableStream, {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
