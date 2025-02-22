@@ -183,9 +183,25 @@ export async function POST(request: Request) {
       }),
     });
 
-    // Ensure the response is ok
+    // Ensure the response is ok and handle specific error cases
     if (!response.ok) {
-      throw new Error(`Perplexity API error: ${response.statusText}`);
+      const errorBody = await response.text().catch(() => null);
+      console.error('Perplexity API error details:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorBody
+      });
+      
+      // Handle specific error cases
+      if (response.status === 400) {
+        throw new Error('Invalid request to Perplexity API. Please check the message format and model name.');
+      } else if (response.status === 401) {
+        throw new Error('Authentication failed. Please check your Perplexity API key.');
+      } else if (response.status === 429) {
+        throw new Error('Rate limit exceeded. Please try again later.');
+      }
+      
+      throw new Error(`Perplexity API error (${response.status}): ${response.statusText}${errorBody ? ' - ' + errorBody : ''}`);
     }
 
     // Create and return the streaming response
