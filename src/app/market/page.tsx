@@ -16,8 +16,18 @@ import { ChatMessage } from '@/types/chat';
 // ... [Previous interfaces remain the same]
 
 export default function MarketAnalysis() {
-  // ... [Previous state declarations remain the same]
-
+  const [message, setMessage] = useState('');
+  const [showLeftPanel, setShowLeftPanel] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [selectedTokenId, setSelectedTokenId] = useState('');
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [marketData, setMarketData] = useState({
+    price: 0,
+    trend: 'up',
+    rsi: 50,
+    macd: 0
+  });
   // Update the useChat hook usage to match our implementation
   const { messages, isLoading: chatLoading, sendMessage, error: chatError } = useChat({
     initialMessages: [],
@@ -186,13 +196,13 @@ export default function MarketAnalysis() {
         {/* Chat Input */}
         <div className="border-t border-[#36C58C]/20 p-6 bg-[#181719]">
           <div className="max-w-3xl mx-auto flex gap-4">
-            <Input
+            <input
               type="text"
               placeholder="Ask about market analysis..."
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-              className="flex-1 bg-[#1C2620]/60 border-[#36C58C]/50 text-white placeholder:text-gray-500"
+              className="flex-1 bg-[#1C2620]/60 border-[#36C58C]/50 text-white placeholder:text-gray-500 rounded-md px-4 py-2"
             />
             <Button 
               onClick={handleSendMessage}
@@ -206,11 +216,15 @@ export default function MarketAnalysis() {
         </div>
       </div>
 
-      {/* Right Panel */}
-      <div className={`w-[400px] bg-[#1C2620]/40 border-l border-[#36C58C]/20 transition-all duration-300 ${
-        showRightPanel ? 'translate-x-0' : 'translate-x-[360px]'
-      }`}>
-        {/* ... Right panel content ... */}
+      {/* Toggle Panel Controls */}
+      <div className="fixed bottom-4 right-4 flex gap-2">
+        <Button
+          onClick={() => setShowLeftPanel(!showLeftPanel)}
+          variant="ghost"
+          className="bg-[#1C2620]/40 hover:bg-[#243830] text-white"
+        >
+          {showLeftPanel ? <PanelLeftClose className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
+        </Button>
       </div>
     </div>
   );
