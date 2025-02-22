@@ -12,8 +12,13 @@ interface ChatOptions {
   onResponse?: (response: string) => void;
 }
 
+const INITIAL_MESSAGE = {
+  role: 'assistant' as const,
+  content: 'Hello! I\'m TradesXBT, your AI trading assistant. I can help you with cryptocurrency analysis, market trends, and trading strategies. Remember that all information I provide is for educational purposes only - always do your own research (DYOR) and consider consulting with financial professionals for personalized advice. How can I assist you today?'
+};
+
 export function useChat(options: ChatOptions = {}) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
