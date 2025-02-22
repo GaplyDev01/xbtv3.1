@@ -144,7 +144,10 @@ export async function POST(request: Request) {
     // Validate API key
     if (!process.env.PERPLEXITY_API_KEY) {
       const error = 'Perplexity API key not configured';
-      console.error(error);
+      console.error('API Key validation failed:', {
+        keyExists: !!process.env.PERPLEXITY_API_KEY,
+        keyLength: process.env.PERPLEXITY_API_KEY?.length || 0
+      });
       return NextResponse.json({ error, details: 'Please configure PERPLEXITY_API_KEY in environment variables' }, { status: 500 });
     }
 
@@ -208,6 +211,13 @@ export async function POST(request: Request) {
     console.log('Sending request to Perplexity API with messages:', JSON.stringify(enhancedMessages));
 
     // Create completion with Perplexity Sonar Pro
+    console.log('Making API request with:', {
+      url: 'https://api.perplexity.ai/chat/completions',
+      model: 'sonar-pro',
+      messageCount: enhancedMessages.length,
+      hasApiKey: !!process.env.PERPLEXITY_API_KEY
+    });
+
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -215,7 +225,7 @@ export async function POST(request: Request) {
         Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'sonar-pro',
+        model: 'sonar-pro-2401',
         messages: enhancedMessages,
         stream: true
       }),
