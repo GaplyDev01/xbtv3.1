@@ -1,57 +1,35 @@
 import postgres from 'postgres';
 
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL environment variable is not set');
+}
+
+// Create a single database connection for server-side operations
+const sql = postgres(process.env.DATABASE_URL, {
+  ssl: 'verify-full',
+  max: 10, // Maximum number of connections
+  idle_timeout: 20, // Idle connection timeout in seconds
+  connect_timeout: 10, // Connection timeout in seconds
+});
+
 /**
- * Database configuration and connection service
+ * Execute a query with parameters
  */
-export class DatabaseService {
-  private static instance: DatabaseService;
-  private sql: postgres.Sql;
-
-  private constructor() {
-    this.sql = postgres(process.env.DATABASE_URL!, {
-      ssl: 'verify-full',
-      max: 10, // Maximum number of connections
-      idle_timeout: 20, // Idle connection timeout in seconds
-      connect_timeout: 10, // Connection timeout in seconds
-    });
-  }
-
-  /**
-   * Get singleton instance of DatabaseService
-   */
-  public static getInstance(): DatabaseService {
-    if (!DatabaseService.instance) {
-      DatabaseService.instance = new DatabaseService();
-    }
-    return DatabaseService.instance;
-  }
-
-  /**
-   * Get SQL client instance
-   */
-  public getClient(): postgres.Sql {
-    return this.sql;
-  }
-
-  /**
-   * Execute a query with parameters
-   */
-  public async query<T>(query: string, ...params: any[]): Promise<T[]> {
-    try {
-      return await this.sql.unsafe(query, params);
-    } catch (error) {
-      console.error('Database query error:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Close database connection
-   */
-  public async close(): Promise<void> {
-    await this.sql.end();
+export async function query<T>(query: string, ...params: any[]): Promise<T[]> {
+  try {
+    return await sql.unsafe(query, params);
+  } catch (error) {
+    console.error('Database query error:', error);
+    throw error;
   }
 }
 
-// Export singleton instance
-export const db = DatabaseService.getInstance();
+/**
+ * Close database connection
+ */
+export async function close(): Promise<void> {
+  await sql.end();
+}
+
+// Export database functions
+export const db = { query, close };

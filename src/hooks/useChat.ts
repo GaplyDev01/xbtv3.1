@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { db } from '@/services/DatabaseService';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -64,13 +63,18 @@ export function useChat(options: ChatOptions = {}) {
       };
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Save to database
-      await db.query(
-        `INSERT INTO chat_history (user_message, assistant_message, created_at)
-         VALUES ($1, $2, NOW())`,
-        userMessage.content,
-        assistantMessage.content
-      );
+      // Save to chat history
+      await fetch('/api/chat-history', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userMessage: userMessage.content,
+          assistantMessage: assistantMessage.content,
+          tokenCount: responseText.split(' ').length, // Simple token count
+        }),
+      });
 
       return responseText;
     } catch (err) {
