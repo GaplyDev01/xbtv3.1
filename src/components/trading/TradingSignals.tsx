@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { FiTrendingUp, FiTrendingDown, FiBrain, FiTarget, FiBarChart2 } from 'react-icons/fi';
+import { TrendingUp, TrendingDown, Brain, Target, BarChart2 } from 'lucide-react';
 import { GlassCard } from '../ui/GlassCard';
 import { LoadingSpinner } from '../loading/LoadingSpinner';
 
@@ -159,11 +159,11 @@ export function TradingSignals() {
                   : 'bg-[#00ccff]/20'
               }`}>
                 {signal.sentiment === 'bullish' ? (
-                  <FiTrendingUp className="w-6 h-6 text-[#00ff99]" />
+                  <TrendingUp className="w-6 h-6 text-[#00ff99]" />
                 ) : signal.sentiment === 'bearish' ? (
-                  <FiTrendingDown className="w-6 h-6 text-[#ff0066]" />
+                  <TrendingDown className="w-6 h-6 text-[#ff0066]" />
                 ) : (
-                  <FiBarChart2 className="w-6 h-6 text-[#00ccff]" />
+                  <BarChart2 className="w-6 h-6 text-[#00ccff]" />
                 )}
               </div>
             </div>

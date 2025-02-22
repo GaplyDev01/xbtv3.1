@@ -4,7 +4,7 @@ import { ReactNode, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
-import { FiHome, FiPieChart, FiMessageSquare, FiSettings, FiDollarSign, FiTrendingUp } from 'react-icons/fi';
+import { Home, PieChart, MessageSquare, Settings, DollarSign, TrendingUp, BarChart2 } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -49,13 +49,13 @@ const NavLink = ({ href, icon, label, className = '', children }: NavLinkProps) 
 };
 
 const navItems = [
-  { href: '/', icon: <FiHome size={20} />, label: 'Home' },
-  { href: '/tokens', icon: <FiTrendingUp size={20} />, label: 'Token Analysis' },
-  { href: '/market', icon: <FiBarChart2 size={20} />, label: 'Market Analysis' },
-  { href: '/chat', icon: <FiMessageSquare size={20} />, label: 'Chat with AI' },
-  { href: '/portfolio', icon: <FiPieChart size={20} />, label: 'Portfolio' },
-  { href: '/investment', icon: <FiDollarSign size={20} />, label: 'Investment' },
-  { href: '/settings', icon: <FiSettings size={20} />, label: 'Settings' },
+  { href: '/', icon: <Home size={20} />, label: 'Home' },
+  { href: '/tokens', icon: <TrendingUp size={20} />, label: 'Token Analysis' },
+  { href: '/market', icon: <BarChart2 size={20} />, label: 'Market Analysis' },
+  { href: '/chat', icon: <MessageSquare size={20} />, label: 'Chat with AI' },
+  { href: '/portfolio', icon: <PieChart size={20} />, label: 'Portfolio' },
+  { href: '/investment', icon: <DollarSign size={20} />, label: 'Investment' },
+  { href: '/settings', icon: <Settings size={20} />, label: 'Settings' },
 ];
 
 export default function Layout({ children }: LayoutProps) {

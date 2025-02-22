@@ -1,9 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Search, Settings2, ArrowUp, ArrowDown, TrendingUp, LineChart, PanelLeftClose, PanelRightClose, Send } from 'lucide-react';
+import { Search, Settings2, ArrowUp, ArrowDown, TrendingUp, BarChart2, PanelLeft, PanelRight, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect, useState, useCallback } from 'react';
 import { usePriceFeed } from '@/hooks/use-price-feed';
@@ -238,7 +236,7 @@ export default function MarketAnalysis() {
           variant="ghost"
           className="bg-[#1C2620]/40 hover:bg-[#243830] text-white"
         >
-          {showLeftPanel ? <PanelLeftClose className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
+          {showLeftPanel ? <PanelLeft className="w-4 h-4" /> : <PanelRight className="w-4 h-4" />}
         </Button>
       </div>
     </div>

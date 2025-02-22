@@ -9,8 +9,8 @@ module.exports = {
   },
   experimental: {
     serverActions: {
-      allowedOrigins: ['localhost:3000']
-    },
+      enabled: true
+    }
   },
   images: {
     domains: ['raw.githubusercontent.com', 'assets.coingecko.com'],
