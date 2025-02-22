@@ -162,6 +162,7 @@ export default function MarketAnalysis() {
               ))}
             </div>
           )}
+        </div>
       </div>
 
       {/* Main Chat Area */}
