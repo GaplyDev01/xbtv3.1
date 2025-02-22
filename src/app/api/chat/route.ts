@@ -84,38 +84,31 @@ export async function POST(request: Request) {
       ...messages
     ];
 
-    // Create stream with proper types
-    const response = await streamText({
+    // Create stream and process it directly
+    const stream = streamText({
       model: perplexity('llama-3.1-sonar-large-32k-online'),
       messages: enhancedMessages,
       temperature: 0.7, // Add some variability while keeping responses focused
       maxTokens: 2000, // Limit response length for better focus
     });
 
-    // Convert async iterable to ReadableStream
-    const readableStream = new ReadableStream({
-      async start(controller) {
-        const encoder = new TextEncoder();
-        try {
-          for await (const chunk of response) {
-            controller.enqueue(encoder.encode(chunk));
-          }
-          controller.close();
-        } catch (error) {
-          console.error('Stream processing error:', error);
-          controller.error(error);
-        }
+    // Create a TransformStream to handle the chunks
+    const transformStream = new TransformStream({
+      async transform(chunk, controller) {
+        controller.enqueue(new TextEncoder().encode(chunk));
       },
     });
 
-    // Create and return the response stream
-    return new Response(readableStream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    });
+    return new Response(
+      stream.pipeThrough(transformStream),
+      {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      }
+    );
   } catch (error) {
     console.error('Chat API error:', error);
     return NextResponse.json(
