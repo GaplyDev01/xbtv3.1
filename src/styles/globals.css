@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0a;
+  --text: #e0e0e0;
+  --neon-green: #39ff14;
+  --neon-purple: #9d00ff;
+  --neon-pink: #ff007f;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-text antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl;
+  }
+
+  .neon-shadow {
+    @apply shadow-[0_0_15px_rgba(57,255,20,0.5)];
+  }
+
+  .neon-border {
+    @apply border border-neon-green;
+  }
+}
+
+/* Animation Classes */
+.fade-in {
+  animation: fadeIn 0.5s ease-in;
+}
+
+.scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0); }
+  to { transform: scale(1); }
+}
