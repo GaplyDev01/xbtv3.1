@@ -31,17 +31,47 @@ interface PriceHistory {
 }
 
 class QuickNodeError extends Error {
-  constructor(message: string, public status?: number) {
+  constructor(
+    message: string,
+    public status?: number,
+    public code?: string,
+    public data?: any
+  ) {
     super(message);
     this.name = 'QuickNodeError';
   }
 }
 
+interface RPCResponse<T> {
+  jsonrpc: string;
+  id: number;
+  result?: T;
+  error?: {
+    code: number;
+    message: string;
+    data?: any;
+  };
+}
+
 export class QuickNodeService {
+  private static readonly MAX_RETRIES = 3;
+  private static readonly INITIAL_BACKOFF = 1000; // 1 second
+  private static rateLimitCounter = 0;
+  private static readonly RATE_LIMIT = 10; // requests per second
+  private static readonly RATE_WINDOW = 1000; // 1 second window
+
   private static async makeRequest<T>(method: string, params: any[]): Promise<T> {
     if (!QUICKNODE_BASE_URL) {
-      throw new QuickNodeError('QuickNode RPC URL not configured');
+      console.warn('QuickNode RPC URL not configured, skipping QuickNode service');
+      return [] as unknown as T;
     }
+
+    // Check rate limit
+    if (this.rateLimitCounter >= this.RATE_LIMIT) {
+      throw new QuickNodeError('Rate limit exceeded', 429);
+    }
+    this.rateLimitCounter++;
+    setTimeout(() => this.rateLimitCounter--, this.RATE_WINDOW);
 
     const cacheKey = JSON.stringify({ method, params });
     const cachedData = cache.get(cacheKey);
@@ -49,41 +79,65 @@ export class QuickNodeService {
       return cachedData.data;
     }
 
-    try {
-      const response = await fetch(QUICKNODE_BASE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method,
-          params,
-        }),
-      });
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
+      try {
+        const response = await fetch(QUICKNODE_BASE_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method,
+            params,
+          }),
+        });
 
-      if (!response.ok) {
-        throw new QuickNodeError(`HTTP error: ${response.statusText}`, response.status);
+        if (!response.ok) {
+          throw new QuickNodeError(
+            `HTTP error: ${response.statusText}`,
+            response.status
+          );
+        }
+
+        const data: RPCResponse<T> = await response.json();
+        
+        if (data.error) {
+          throw new QuickNodeError(
+            `RPC error: ${data.error.message}`,
+            data.error.code,
+            String(data.error.code),
+            data.error.data
+          );
+        }
+
+        // Cache successful response
+        cache.set(cacheKey, {
+          data: data.result as T,
+          timestamp: Date.now(),
+        });
+
+        return data.result as T;
+      } catch (error) {
+        lastError = error as Error;
+        
+        // Don't retry on certain error types
+        if (error instanceof QuickNodeError) {
+          if (error.status === 401 || error.status === 403) {
+            throw error; // Don't retry auth errors
+          }
+        }
+
+        // Exponential backoff
+        const backoff = this.INITIAL_BACKOFF * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, backoff));
       }
-
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new QuickNodeError(`RPC error: ${data.error.message}`, data.error.code);
-      }
-
-      // Cache successful response
-      cache.set(cacheKey, {
-        data: data.result,
-        timestamp: Date.now(),
-      });
-
-      return data.result;
-    } catch (error) {
-      console.error('QuickNode API request error:', error);
-      throw error;
     }
+
+    console.error('QuickNode API request failed after retries:', lastError);
+    throw lastError;
   }
 
   static async getTokenInfo(tokenAddress: string): Promise<TokenInfo> {

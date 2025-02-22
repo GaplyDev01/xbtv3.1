@@ -10,6 +10,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { SearchBar } from '@/components/search/SearchBar';
 import { TokenService } from '@/services/TokenService';
 import { ChatMessage } from '@/types/chat';
+import { Button } from '@/components/ui/button';
 
 // ... [Previous interfaces remain the same]
 

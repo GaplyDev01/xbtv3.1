@@ -1,24 +1,76 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback, KeyboardEvent } from 'react';
 import { motion } from 'framer-motion';
 
 interface SearchBarProps {
   onSearch?: (query: string) => void;
+  onSelect?: (id: string) => void;
   placeholder?: string;
+  isLoading?: boolean;
 }
 
 export function SearchBar({ 
   onSearch, 
-  placeholder = "Search for tokens..." 
+  onSelect,
+  placeholder = "Search for tokens...",
+  isLoading = false
 }: SearchBarProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [query, setQuery] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+
+  // Debounce search
+  const debouncedSearch = useCallback(
+    (value: string) => {
+      const timer = setTimeout(() => {
+        onSearch?.(value);
+      }, 300);
+      return () => clearTimeout(timer);
+    },
+    [onSearch]
+  );
+
+  useEffect(() => {
+    if (query.trim()) {
+      const cleanup = debouncedSearch(query);
+      return cleanup;
+    }
+  }, [query, debouncedSearch]);
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedIndex(prev => Math.min(prev + 1, 4)); // Max 5 results
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedIndex(prev => Math.max(prev - 1, -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedIndex >= 0) {
+          // Handle selection
+          onSelect?.(selectedIndex.toString());
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setSelectedIndex(-1);
+        setQuery('');
+        break;
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSearch?.(query);
   };
+
+  // Reset selected index when query changes
+  useEffect(() => {
+    setSelectedIndex(-1);
+  }, [query]);
 
   return (
     <form onSubmit={handleSubmit} className="relative w-full">
@@ -46,7 +98,12 @@ export function SearchBar({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onBlur={() => {
+            setIsFocused(false);
+            // Small delay to allow click events on results
+            setTimeout(() => setSelectedIndex(-1), 200);
+          }}
+          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           className="w-full px-4 py-3 bg-gray-900/50 backdrop-blur-sm 
                    text-white rounded-lg border-2 border-[#00ff99]/50

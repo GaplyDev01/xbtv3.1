@@ -33,6 +33,7 @@ export class TokenService {
     CHART_DATA: 15 * 60 * 1000  // 15 minutes
   };
 
+
   /**
    * Search for tokens using CoinGecko API
    * @param query Search query string
@@ -71,6 +72,14 @@ export class TokenService {
       );
     }
   }
+
+
+  private static readonly DEFAULT_IMAGE_URL = 'https://assets.coingecko.com/coins/images/large/missing_large.png';
+  private static readonly FRESHNESS_THRESHOLDS = {
+    PRICE: 60 * 1000,        // 1 minute
+    MARKET_DATA: 5 * 60 * 1000, // 5 minutes
+    CHART_DATA: 15 * 60 * 1000  // 15 minutes
+  };
 
   private static async fetchCoinGeckoData(address: string): Promise<TokenDetails | null> {
     try {

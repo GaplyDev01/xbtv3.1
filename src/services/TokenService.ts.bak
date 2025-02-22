@@ -1,0 +1,788 @@
+import { CoinGeckoService } from './CoinGeckoService';
+import { solanaAddressSchema } from './validators';
+import {
+  TokenPrice,
+  TokenMarketData,
+  TokenOHLC,
+  TokenChartData,
+  SearchResult,
+  TokenDetails,
+  PriceHistoryItem,
+} from './types';
+
+/**
+ * Custom error class for token-related errors
+ */
+export class TokenServiceError extends Error {
+  constructor(
+    message: string,
+    public code: string,
+    public source?: 'coingecko' | 'token-service',
+    public originalError?: Error
+  ) {
+    super(message);
+    this.name = 'TokenServiceError';
+  }
+}
+
+export type MarketChartData = TokenChartData;
+
+export class TokenService {
+  private static readonly FRESHNESS_THRESHOLDS = {
+    PRICE: 60 * 1000,        // 1 minute
+    MARKET_DATA: 5 * 60 * 1000, // 5 minutes
+    CHART_DATA: 15 * 60 * 1000  // 15 minutes
+  };
+
+  private static async fetchCoinGeckoData(address: string): Promise<TokenDetails | null> {
+    try {
+      // Get token price and market data using the simple/token_price endpoint
+      const tokenPrices = await CoinGeckoService.getTokenPrices('solana', [address], {
+        includeMarketCap: true,
+        include24hVol: true,
+        include24hChange: true,
+        includeLastUpdated: true,
+        precision: 8
+      });
+
+      const tokenData = tokenPrices[address.toLowerCase()];
+      if (!tokenData) return null;
+
+      // Get additional token info for metadata
+      const tokenInfo = await CoinGeckoService.getTokenInfo(address);
+      return {
+        id: address,
+        name: tokenInfo?.name || 'Unknown Token',
+        symbol: tokenInfo?.symbol || 'UNKNOWN',
+        image: {
+          large: tokenInfo?.image || '',
+          small: tokenInfo?.image || '',
+          thumb: tokenInfo?.image || ''
+        },
+        market_data: {
+          current_price: { usd: tokenData.usd },
+          price_change_percentage_24h: tokenData.usd_24h_change || 0,
+          market_cap: { usd: tokenData.usd_market_cap || 0 },
+          total_volume: { usd: tokenData.usd_24h_vol || 0 },
+          high_24h: { usd: 0 }, // Not available in simple endpoint
+          low_24h: { usd: 0 }  // Not available in simple endpoint
+        },
+        description: { en: '' },
+        last_updated_at: tokenData.last_updated_at || Math.floor(Date.now() / 1000)
+      };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new TokenServiceError(
+        `Failed to fetch CoinGecko data: ${errorMessage}`,
+        'COINGECKO_FETCH_ERROR',
+        'coingecko'
+      );
+    }
+  }
+
+
+
+  private static getDefaultTokenDetails(address: string): TokenDetails {
+    const imageUrl = this.DEFAULT_IMAGE_URL.replace('{address}', address);
+    return {
+      id: address,
+      name: 'Unknown Token',
+      symbol: 'UNKNOWN',
+      image: {
+        large: imageUrl,
+        small: imageUrl,
+        thumb: imageUrl
+      },
+      market_data: {
+        current_price: { usd: 0 },
+        price_change_percentage_24h: 0,
+        market_cap: { usd: 0 },
+        total_volume: { usd: 0 },
+        high_24h: { usd: 0 },
+        low_24h: { usd: 0 }
+      },
+      description: { en: '' },
+      last_updated_at: Math.floor(Date.now() / 1000)
+    };
+  }
+
+  static async getTokenDetails(address: string): Promise<TokenDetails> {
+    // Input validation
+    const addressResult = solanaAddressSchema.safeParse(address);
+    if (!addressResult.success) {
+      throw new TokenServiceError(
+        'Invalid Solana token address',
+        'INVALID_ADDRESS'
+      );
+    }
+
+    try {
+      const coinGeckoData = await TokenService.fetchCoinGeckoData(address);
+      if (coinGeckoData) return coinGeckoData;
+      
+      return this.getDefaultTokenDetails(address);
+    } catch (error) {
+      console.error('Error fetching token details:', error);
+      
+      if (error instanceof TokenServiceError) {
+        throw error;
+      }
+      
+      throw new TokenServiceError(
+        'Failed to fetch token details',
+        'UNKNOWN_ERROR',
+        undefined
+      );
+    }
+  }
+
+  public static async getMarketChart(tokenAddress: string, days: string | number): Promise<MarketChartData> {
+    try {
+      const endTime = Math.floor(Date.now() / 1000);
+      const startTime = endTime - (typeof days === 'string' ? parseInt(days) : days) * 24 * 60 * 60;
+      
+      const history = await QuickNodeService.getTokenPriceHistory(tokenAddress, startTime, endTime);
+      
+      return {
+        prices: history.map(point => [point.timestamp * 1000, point.price]),
+        market_caps: history.map(point => [point.timestamp * 1000, point.price * point.volume]), // Approximate
+        total_volumes: history.map(point => [point.timestamp * 1000, point.volume])
+      };
+    } catch (error) {
+      console.error('Error fetching market chart:', error);
+      throw error;
+    }
+  }
+
+  public static async getExchangeVolumeChart(
+    exchangeId: string,
+    days: number | string,
+    convertToUSD: boolean = false
+  ): Promise<ExchangeVolumePoint[]> {
+    try {
+      const volumeData = await CoinGeckoService.getExchangeVolumeChart(exchangeId, days);
+      
+      if (!volumeData?.length) {
+        throw new TokenServiceError(
+          'No volume data available',
+          'COINGECKO_NO_VOLUME_DATA',
+          'coingecko'
+        );
+      }
+
+      let btcToUsdRate: number | undefined;
+      if (convertToUSD) {
+        const rates = await CoinGeckoService.getExchangeRates();
+        btcToUsdRate = rates.rates['usd']?.value;
+      }
+
+      return volumeData.map(([timestamp, volumeBTC]) => {
+        const point: ExchangeVolumePoint = {
+          timestamp,
+          volumeBTC: typeof volumeBTC === 'string' ? parseFloat(volumeBTC) : volumeBTC
+        };
+
+        if (convertToUSD && btcToUsdRate) {
+          point.volumeUSD = point.volumeBTC * btcToUsdRate;
+        }
+
+        return point;
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new TokenServiceError(
+        `Failed to fetch exchange volume data: ${errorMessage}`,
+        'COINGECKO_VOLUME_ERROR',
+        'coingecko'
+      );
+    }
+  }
+
+  public static async getGlobalMarketData(): Promise<GlobalMarketData> {
+    try {
+      const data = await CoinGeckoService.getGlobalData();
+      if (!data) {
+        throw new TokenServiceError(
+          'No global market data available',
+          'COINGECKO_NO_GLOBAL_DATA',
+          'coingecko'
+        );
+      }
+      return data;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new TokenServiceError(
+        `Failed to fetch global market data: ${errorMessage}`,
+        'COINGECKO_GLOBAL_ERROR',
+        'coingecko'
+      );
+    }
+  }
+
+  public static async getTrendingSearches(): Promise<TrendingResult> {
+    try {
+      const data = await CoinGeckoService.getTrending();
+      if (!data) {
+        throw new TokenServiceError(
+          'No trending data available',
+          'COINGECKO_NO_TRENDING_DATA',
+          'coingecko'
+        );
+      }
+      return data;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new TokenServiceError(
+        `Failed to fetch trending data: ${errorMessage}`,
+        'COINGECKO_TRENDING_ERROR',
+        'coingecko'
+      );
+    }
+  }
+
+  public static async getNFTCollectionData(nftId: string): Promise<NFTCollectionData> {
+    try {
+      const data = await CoinGeckoService.getNFTData(nftId);
+      if (!data) {
+        throw new TokenServiceError(
+          'No NFT collection data available',
+          'COINGECKO_NO_NFT_DATA',
+          'coingecko'
+        );
+      }
+      return data;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new TokenServiceError(
+        `Failed to fetch NFT collection data: ${errorMessage}`,
+        'COINGECKO_NFT_ERROR',
+        'coingecko'
+      );
+    }
+  }
+
+  public static async getNFTCollectionByContract(
+    assetPlatformId: string,
+    contractAddress: string
+  ): Promise<NFTCollectionData> {
+    try {
+      const data = await CoinGeckoService.getNFTByContract(assetPlatformId, contractAddress);
+      if (!data) {
+        throw new TokenServiceError(
+          'No NFT collection data available',
+          'COINGECKO_NO_NFT_DATA',
+          'coingecko'
+        );
+      }
+      return data;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new TokenServiceError(
+        `Failed to fetch NFT collection data: ${errorMessage}`,
+        'COINGECKO_NFT_ERROR',
+        'coingecko'
+      );
+    }
+  }
+
+  public static async getDerivativesExchange(exchangeId: string): Promise<DerivativesExchangeData> {
+    try {
+      const data = await CoinGeckoService.getDerivativesExchange(exchangeId);
+      if (!data) {
+        throw new TokenServiceError(
+          'No derivatives exchange data available',
+          'COINGECKO_NO_DERIVATIVES_DATA',
+          'coingecko'
+        );
+      }
+      return data;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new TokenServiceError(
+        `Failed to fetch derivatives exchange data: ${errorMessage}`,
+        'COINGECKO_DERIVATIVES_ERROR',
+        'coingecko'
+      );
+    }
+  }
+
+  public static async getDerivativesTickers(): Promise<DerivativesTicker[]> {
+    try {
+      const data = await CoinGeckoService.getDerivativesTickers();
+      if (!data?.length) {
+        throw new TokenServiceError(
+          'No derivatives tickers available',
+          'COINGECKO_NO_DERIVATIVES_TICKERS',
+          'coingecko'
+        );
+      }
+      return data;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new TokenServiceError(
+        `Failed to fetch derivatives tickers: ${errorMessage}`,
+        'COINGECKO_DERIVATIVES_TICKERS_ERROR',
+        'coingecko'
+      );
+    }
+  }
+
+  public static async getNFTMarketChart(nftId: string, days: number): Promise<NFTMarketData> {
+    try {
+      const data = await CoinGeckoService.getNFTMarketChart(nftId, days);
+      if (!data) {
+        throw new TokenServiceError(
+          'No NFT market chart data available',
+          'COINGECKO_NO_NFT_CHART_DATA',
+          'coingecko'
+        );
+      }
+      return data;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new TokenServiceError(
+        `Failed to fetch NFT market chart data: ${errorMessage}`,
+        'COINGECKO_NFT_CHART_ERROR',
+        'coingecko'
+      );
+    }
+  }
+
+  public static async getTokenOHLC(tokenAddress: string, days: string = '30', interval?: string): Promise<OHLCData[]> {
+    try {
+      // Try CoinGecko first
+      try {
+        const coinGeckoData = await CoinGeckoService.getOHLCData(tokenAddress, parseInt(days));
+        if (coinGeckoData.length > 0) {
+          return coinGeckoData.map(data => ({
+            timestamp: data.timestamp,
+            open: data.open,
+            high: data.high,
+            low: data.low,
+            close: data.close
+          }));
+        }
+      } catch (coinGeckoError) {
+        console.error('Error fetching CoinGecko OHLC data:', coinGeckoError);
+      }
+
+      // Try QuickNode
+      try {
+        const endTime = Math.floor(Date.now() / 1000);
+        const startTime = endTime - (parseInt(days) * 24 * 60 * 60);
+        const quickNodeData = await QuickNodeService.getTokenPriceHistory(tokenAddress, startTime, endTime);
+        
+        if (quickNodeData.length > 0) {
+          return quickNodeData.map((point: { timestamp: number; price: number; volume: number }) => ({
+            timestamp: point.timestamp * 1000,
+            open: point.price,
+            high: point.price,
+            low: point.price,
+            close: point.price,
+            volume: point.volume
+          }));
+        }
+      } catch (quickNodeError) {
+        console.error('Error fetching QuickNode OHLC data:', quickNodeError);
+      }
+
+      throw new Error('No price history data available from any source');
+    } catch (error) {
+      console.error('Error fetching OHLC data:', error);
+      throw error;
+    }
+  }
+
+  public static async getTokenMarketChart(tokenAddress: string, days: string | number = '30', interval?: string): Promise<MarketChartData> {
+    let errors: Error[] = [];
+
+    // Try CoinGecko first
+    try {
+      const tokenDetails = await this.fetchCoinGeckoData(tokenAddress);
+      if (tokenDetails?.id) {
+        const response = await CoinGeckoService.getTokenMarketChart(
+          tokenDetails.id,
+          typeof days === 'string' ? parseInt(days) : days,
+          {
+            vs_currency: 'usd',
+            interval: interval as '5m' | 'hourly' | 'daily'
+          }
+        );
+
+        if (response?.prices?.length) {
+          return {
+            prices: response.prices.map(([timestamp, price]) => [
+              timestamp,
+              Number(price.toFixed(8))
+            ]),
+            market_caps: response.market_caps.map(([timestamp, cap]) => [
+              timestamp,
+              Number(cap.toFixed(2))
+            ]),
+            total_volumes: response.total_volumes.map(([timestamp, volume]) => [
+              timestamp,
+              Number(volume.toFixed(2))
+            ])
+          };
+        }
+      }
+    } catch (error) {
+      errors.push(error as Error);
+      console.error('Error fetching CoinGecko market chart:', error);
+    }
+
+    // Fallback to QuickNode
+    try {
+      const endTime = Math.floor(Date.now() / 1000);
+      const startTime = endTime - (typeof days === 'string' ? parseInt(days) : days) * 24 * 60 * 60;
+      
+      const history = await QuickNodeService.getTokenPriceHistory(tokenAddress, startTime, endTime);
+      if (history?.length) {
+        return {
+          prices: history.map(point => [point.timestamp * 1000, Number(point.price.toFixed(8))]),
+          market_caps: [],  // QuickNode doesn't provide market cap history
+          total_volumes: history.map(point => [point.timestamp * 1000, Number(point.volume.toFixed(2))])
+        };
+      }
+    } catch (error) {
+      errors.push(error as Error);
+      console.error('Error fetching QuickNode price history:', error);
+    }
+
+    // If all sources fail, throw a combined error
+    throw new TokenServiceError(
+      `Failed to fetch market chart data: ${errors.map(e => e.message).join(', ')}`,
+      'CHART_DATA_UNAVAILABLE',
+      errors[0]?.name === 'TokenServiceError' ? 'coingecko' : 'quicknode',
+      errors[0]
+    );
+  }
+
+  private static async getQuickNodeTokens(limit: number = 50): Promise<TokenPrice[]> {
+    try {
+      const tokens = await QuickNodeService.searchTokens('SOL');
+      if (!tokens?.length) {
+        throw new TokenServiceError(
+          'No token data available from QuickNode',
+          'QUICKNODE_NO_DATA',
+          'quicknode'
+        );
+      }
+
+      const topTokens = tokens.slice(0, limit);
+      return topTokens.map(token => ({
+        id: token.address,
+        symbol: token.symbol || 'UNKNOWN',
+        name: token.name || 'Unknown Token',
+        current_price: token.price || 0,
+        market_cap: token.marketCap || 0,
+        market_cap_rank: 0,
+        price_change_percentage_24h: token.priceChange24h || 0,
+        total_volume: token.volume24h || 0,
+        volume_24h: token.volume24h || 0,
+        liquidity_usd: 0, // Not directly available from QuickNode
+        sparkline_7d: [],
+        imageUrl: token.logoURI || '',
+        last_updated_at: Math.floor(Date.now() / 1000),
+        source: 'quicknode' as const,
+        verified: true,
+        info: {
+          imageUrl: token.logoURI || '',
+          source: 'quicknode' as const,
+          verified: true
+        }
+      }));
+    } catch (error) {
+      if (error instanceof TokenServiceError) {
+        throw error;
+      }
+      throw new TokenServiceError(
+        'Failed to fetch QuickNode tokens',
+        'QUICKNODE_FETCH_ERROR',
+        'quicknode'
+      );
+    }
+  }
+
+  private static async getCoinGeckoTokens(limit: number = 50): Promise<TokenPrice[]> {
+    try {
+      const marketData = await CoinGeckoService.getMarketData({
+        perPage: limit,
+        sparkline: true,
+        priceChangePercentage: ['24h'],
+        order: 'market_cap_desc'
+      });
+
+      if (!marketData?.length) {
+        throw new TokenServiceError(
+          'No token data available from CoinGecko',
+          'COINGECKO_NO_DATA',
+          'coingecko'
+        );
+      }
+
+      return marketData.map(token => ({
+        id: token.id,
+        symbol: token.symbol.toUpperCase(),
+        name: token.name,
+        current_price: token.current_price || 0,
+        market_cap: token.market_cap || 0,
+        market_cap_rank: token.market_cap_rank || 0,
+        price_change_percentage_24h: token.price_change_percentage_24h_in_currency || 0,
+        total_volume: token.total_volume || 0,
+        volume_24h: token.total_volume || 0,
+        liquidity_usd: (token.total_volume || 0) / 24, // Approximate daily liquidity
+        sparkline_7d: token.sparkline_in_7d?.price || [],
+        imageUrl: token.image || '',
+        last_updated_at: Math.floor(Date.now() / 1000),
+        source: 'coingecko' as const,
+        verified: true,
+        info: {
+          imageUrl: token.image || '',
+          source: 'coingecko' as const,
+          verified: true
+        }
+      }));
+    } catch (error) {
+      if (error instanceof TokenServiceError) {
+        throw error;
+      }
+      throw new TokenServiceError(
+        'Failed to fetch CoinGecko tokens',
+        'COINGECKO_FETCH_ERROR',
+        'coingecko'
+      );
+    }
+  }
+
+  public static async getBatchTokenPrices(addresses: string[]): Promise<TokenPrice[]> {
+    try {
+      const tokenPrices = await CoinGeckoService.getTokenPrices('solana', addresses, {
+        includeMarketCap: true,
+        include24hVol: true,
+        include24hChange: true,
+        includeLastUpdated: true,
+        precision: 8
+      });
+
+      return Object.entries(tokenPrices).map(([address, data]) => ({
+        id: address,
+        symbol: 'UNKNOWN', // Basic info not available in simple endpoint
+        name: 'Unknown Token',
+        current_price: data.usd,
+        market_cap: data.usd_market_cap || 0,
+        market_cap_rank: 0,
+        price_change_percentage_24h: data.usd_24h_change || 0,
+        total_volume: data.usd_24h_vol || 0,
+        volume_24h: data.usd_24h_vol || 0,
+        liquidity_usd: (data.usd_24h_vol || 0) / 24, // Approximate daily liquidity
+        sparkline_7d: [],
+        imageUrl: '',
+        last_updated_at: data.last_updated_at || Math.floor(Date.now() / 1000),
+        source: 'coingecko' as const,
+        verified: true,
+        info: {
+          imageUrl: '',
+          source: 'coingecko' as const,
+          verified: true
+        }
+      }));
+    } catch (error) {
+      console.error('Error fetching batch token prices:', error);
+      throw new TokenServiceError(
+        'Failed to fetch batch token prices',
+        'COINGECKO_BATCH_ERROR',
+        'coingecko'
+      );
+    }
+  }
+
+  static async getTopTokens(limit: number = 50): Promise<TokenPrice[]> {
+    const errors: Error[] = [];
+
+    try {
+      // First get the top tokens list from CoinGecko
+      const topTokens = await CoinGeckoService.getTopTokens(limit);
+      if (!topTokens.length) {
+        throw new TokenServiceError(
+          'No top tokens found from CoinGecko',
+          'COINGECKO_NO_DATA',
+          'coingecko'
+        );
+      }
+
+      // Extract addresses and fetch fresh price data in batch
+      const addresses = topTokens.map(token => token.id);
+      const freshPrices = await this.getBatchTokenPrices(addresses);
+
+      // Merge fresh price data with token metadata
+      return freshPrices.map((price, index) => ({
+        ...price,
+        symbol: topTokens[index].symbol,
+        name: topTokens[index].name,
+        imageUrl: topTokens[index].image || '',
+        info: {
+          ...price.info,
+          imageUrl: topTokens[index].image || ''
+        }
+      }));
+
+    } catch (error) {
+      console.error('Error fetching top tokens:', error);
+      errors.push(error as Error);
+    }
+
+    // Try CoinGecko first as it's most reliable for market data
+    try {
+      const coinGeckoTokens = await this.getCoinGeckoTokens(limit);
+      if (coinGeckoTokens.length > 0) {
+        return coinGeckoTokens;
+      }
+    } catch (error) {
+      errors.push(error as Error);
+      console.error('Error fetching CoinGecko tokens:', error);
+    }
+
+    // Fallback to QuickNode
+    try {
+      const quickNodeTokens = await this.getQuickNodeTokens(limit);
+      if (quickNodeTokens.length > 0) {
+        return quickNodeTokens;
+      }
+    } catch (error) {
+      errors.push(error as Error);
+      console.error('Error fetching QuickNode tokens:', error);
+    }
+
+    // If all sources failed, throw a combined error
+    if (errors.length >= 2) {
+      throw new TokenServiceError(
+        'All token data sources failed',
+        'ALL_SOURCES_FAILED',
+        'coingecko',
+        errors[0]
+      );
+    }
+
+    return [];
+  }
+
+  public static async getTokenChartData(tokenAddress: string, days: number | 'max', interval?: '5m' | 'hourly' | 'daily'): Promise<TokenChartData> {
+    let errors: Error[] = [];
+
+    // Validate interval based on days
+    if (interval === '5m' && typeof days === 'number' && days > 10) {
+      throw new TokenServiceError(
+        '5-minute interval data is only available for the past 10 days',
+        'INVALID_INTERVAL',
+        'coingecko'
+      );
+    }
+    if (interval === 'hourly' && typeof days === 'number' && days > 100) {
+      throw new TokenServiceError(
+        'Hourly interval data is only available for the past 100 days',
+        'INVALID_INTERVAL',
+        'coingecko'
+      );
+    }
+
+    try {
+      // Get token ID from CoinGecko
+      const tokenDetails = await this.fetchCoinGeckoData(tokenAddress);
+      if (!tokenDetails?.id) {
+        throw new TokenServiceError(
+          'Token not found in CoinGecko',
+          'TOKEN_NOT_FOUND',
+          'coingecko'
+        );
+      }
+
+      // Fetch market chart data
+      const response = await CoinGeckoService.getTokenMarketChart(
+        tokenDetails.id,
+        days,
+        {
+          vs_currency: 'usd',
+          interval: interval
+        }
+      );
+
+      if (!response?.prices?.length) {
+        throw new TokenServiceError(
+          'No chart data available',
+          'CHART_DATA_UNAVAILABLE',
+          'coingecko'
+        );
+      }
+
+      // Normalize the data
+      const chartData: TokenChartData = {
+        prices: response.prices.map(([timestamp, price]) => [
+          timestamp,
+          Number(price.toFixed(8))
+        ]),
+        market_caps: response.market_caps.map(([timestamp, cap]) => [
+          timestamp,
+          Number(cap.toFixed(2))
+        ]),
+        total_volumes: response.total_volumes.map(([timestamp, volume]) => [
+          timestamp,
+          Number(volume.toFixed(2))
+        ])
+      };
+
+      return chartData;
+    } catch (error) {
+      errors.push(error as Error);
+    }
+
+    // If CoinGecko fails, throw an error
+    throw new TokenServiceError(
+      'Failed to fetch token chart data',
+      'CHART_DATA_UNAVAILABLE',
+      'coingecko',
+      errors[0]
+    );
+  }
+
+  public static async searchTokens(query: string): Promise<SearchResult[]> {
+    let errors: Error[] = [];
+
+    if (!query) {
+      throw new TokenServiceError(
+        'Search query cannot be empty',
+        'INVALID_QUERY'
+      );
+    }
+
+    // Try CoinGecko first for better market data
+    try {
+      const coinGeckoResults = await CoinGeckoService.searchTokens(query);
+      if (coinGeckoResults?.length > 0) {
+        return coinGeckoResults.map(token => ({
+          id: token.id,
+          name: token.name || 'Unknown Token',
+          symbol: (token.symbol || 'UNKNOWN').toUpperCase(),
+          market_cap_rank: token.market_cap_rank || 0,
+          thumb: token.image || `https://assets.coingecko.com/coins/images/small/${token.id}.png`,
+          large: token.image || `https://assets.coingecko.com/coins/images/large/${token.id}.png`
+        }));
+      }
+    } catch (error) {
+      errors.push(error as Error);
+      console.error('Error searching tokens in CoinGecko:', error);
+    }
+
+
+    // If CoinGecko search failed, throw error
+    if (errors.length > 0) {
+      throw new TokenServiceError(
+        'Failed to search tokens',
+        'SEARCH_FAILED',
+        'coingecko'
+      );
+    }
+
+    return [];
+  }
+}
