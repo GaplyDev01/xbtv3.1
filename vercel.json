@@ -2,5 +2,11 @@
   "crons": [{
     "path": "/api/token-prices/update",
     "schedule": "*/5 * * * *"
-  }]
+  }],
+  "buildCommand": "npm install --build-from-source && npm run build",
+  "installCommand": "npm install --build-from-source",
+  "env": {
+    "NPM_FLAGS": "--unsafe-perm",
+    "PYTHON": "python3"
+  }
 }
